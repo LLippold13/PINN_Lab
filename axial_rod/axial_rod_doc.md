@@ -11,6 +11,9 @@ $$
 u(0) = 0,\quad \sigma (1) = \sigma_0
 $$
 which corresponds to a homogenous rod, which is fixed on the left end and subjected to an axial force $F=\sigma_0\cdot A$ at the right end. A simple PINN is perfectly capable of approximating the solution to this problem.
+
+
+
 ## Inverse problem
 We are aiming to eventually utilize PINNs for system identification. This generally involves solving an inverse problem. To mimic this situation we altered the above problem. The Youngs modulus $E$, which is a prescribed constant in the former case, is now added as a variable to the output of the neural network. The system of PDEs can for this case be summarized with the equation
 $$

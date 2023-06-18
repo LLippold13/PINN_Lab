@@ -61,7 +61,7 @@ class PINN_NeuralNet(tf.keras.Model):
             output_dim=2,
             num_hidden_layers=N_h, 
             num_neurons_per_layer=N_n,
-            activation='tanh',
+            activation='swish',
             kernel_initializer='glorot_normal',
             **kwargs):
         super().__init__(**kwargs)
@@ -90,7 +90,7 @@ class PINN_NeuralNet(tf.keras.Model):
             Z = self.hidden[i](Z)
         Z = self.out(Z)
         
-        return self.scale_out(Z)
+        return Z #self.scale_out(Z)
     
 class PINNSolver():
     
@@ -119,8 +119,8 @@ class PINNSolver():
                 tape2.watch(self.x)
             
                 pred = self.model(self.x)
-                u = pred[:,0]
-                E = pred[:,1]
+                u = pred[:,0:1]
+                E = pred[:,1:2]
             u_x = tape2.gradient(u, self.x)
             E_x = tape2.gradient(E, self.x)
         u_xx = tape.gradient(u_x, self.x)
@@ -213,10 +213,10 @@ class PINNSolver():
         gs = GridSpec(2, 3, height_ratios=[1,1], width_ratios=[1, 1, 1])
         
         ax4 = fig.add_subplot(gs[0,0:2])
-        ax4.loglog(range(len(self.hist)), self.hist,'k-', label = 'total')
-        ax4.loglog(range(len(self.hist)), np.array(self.losses)[:,0],'r-', alpha=0.5, label='PDE')
-        ax4.loglog(range(len(self.hist)), np.array(self.losses)[:,1],'b-', alpha=0.5, label='BC')
-        ax4.loglog(range(len(self.hist)), np.array(self.losses)[:,2],'g-', alpha=0.5, label='data')
+        ax4.semilogy(range(len(self.hist)), self.hist,'k-', label = 'total')
+        ax4.semilogy(range(len(self.hist)), np.array(self.losses)[:,0],'r-', alpha=0.5, label='PDE')
+        ax4.semilogy(range(len(self.hist)), np.array(self.losses)[:,1],'b-', alpha=0.5, label='BC')
+        ax4.semilogy(range(len(self.hist)), np.array(self.losses)[:,2],'g-', alpha=0.5, label='data')
         ax4.set_xlim(100,)
         ax4.set_ylim(None,np.amax(self.hist[100:]))
         ax4.set_xlabel('$n_{epoch}$')
@@ -260,10 +260,10 @@ solver = PINNSolver(model, X_r)
 # Start timer
 t0 = time()
 
-#lr = tf.keras.optimizers.schedules.PiecewiseConstantDecay([950,970],[1e-2,1e-3,5e-4])
-optim = tf.keras.optimizers.Adam(learning_rate=3e-3)
+lr = tf.keras.optimizers.schedules.PiecewiseConstantDecay([5000,10000],[1e-3,5e-4,5e-5])
+optim = tf.keras.optimizers.Adam(learning_rate=lr)
 #optim = tf.keras.optimizers.Adam()
-solver.solve_with_TFoptimizer(optim, X_data, N=2000)
+solver.solve_with_TFoptimizer(optim, X_data, N=20000)
 
 
 # Print computation time

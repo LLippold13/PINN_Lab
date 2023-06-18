@@ -223,9 +223,9 @@ solver = PINNSolver(model, X_c)
 t0 = time()
 
 #lr = tf.keras.optimizers.schedules.PiecewiseConstantDecay([950,970],[1e-2,1e-3,5e-4])
-optim = tf.keras.optimizers.Adam(learning_rate=3e-3)
+optim = tf.keras.optimizers.Adam(learning_rate=1e-4)
 #optim = tf.keras.optimizers.Adam()
-solver.solve_with_TFoptimizer(optim, X_b, N=5000)
+solver.solve_with_TFoptimizer(optim, X_b, N=50000)
 
 
 # Print computation time

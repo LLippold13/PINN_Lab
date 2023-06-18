@@ -7,7 +7,7 @@ import os
 os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 
 # Set data type
-DTYPE='float32'
+DTYPE='float64'
 tf.keras.backend.set_floatx(DTYPE)
 
 # Set random seed for reproducible results
@@ -20,7 +20,7 @@ N_d = 10
 #Hyperparameters
 N_h = 2 # number of hidden layers
 N_n = 20 # number of neurons per layer
-loss_fac = [1., 1., 1e3] # loss scaling factors: [PDE, BC, data]
+loss_fac = [1., 2., 10.] # loss scaling factors: [PDE, BC, data]
 
 # Set boundary
 xmin = 0.0
@@ -57,7 +57,7 @@ class PINN_NeuralNet(tf.keras.Model):
             output_dim=2,
             num_hidden_layers=N_h, 
             num_neurons_per_layer=N_n,
-            activation='tanh',
+            activation='swish',
             kernel_initializer='glorot_normal',
             **kwargs):
         super().__init__(**kwargs)
@@ -98,7 +98,7 @@ class PINNSolver():
         self.hist = []
         self.weights = []
         self.iter = 0
-        
+    
     def get_r(self):
         
         with tf.GradientTape() as tape1:
@@ -109,8 +109,8 @@ class PINNSolver():
                     tape3.watch(self.x)
                     with tf.GradientTape() as tape4:
                         tape4.watch(self.x)
-                        u = self.model(self.x)[:,0]
-                        F = self.model(self.x)[:,1]
+                        u = self.model(self.x)[:,0:1]
+                        F = self.model(self.x)[:,1:2]
                     u_x = tape4.gradient(u, self.x)
                 u_xx = tape3.gradient(u_x, self.x)
             u_xxx = tape2.gradient(u_xx, self.x)
@@ -120,27 +120,27 @@ class PINNSolver():
         
         return res_PDE
     
-    def loss_fn(self, X):
+    def loss_fn_all(self, X):
         
         # Compute phi_r
         r_PDE = self.get_r()
         loss_PDE = tf.reduce_mean(tf.square(r_PDE))
-        loss_BC = 0
+        loss_BC = 0.
         with tf.GradientTape(persistent=True) as tape:
             tape.watch(X)
             with tf.GradientTape(persistent=True) as tape2:
                 tape2.watch(X)    
                 pred = self.model(X)
                 u = tf.reshape(pred[:,0],[-1,1])
-                F = tf.reshape(pred[:,1],[-1,1])
+                # F = tf.reshape(pred[:,1],[-1,1])
             u_x = tape2.gradient(u,X)
-            F_x = tape2.gradient(F,X)
+            # F_x = tape2.gradient(F,X)
         u_xx = tape.gradient(u_x, X)
         
         # BC on dispalcement:
         loss_BC += tf.reduce_mean(tf.square(u[0])+tf.square(u[1])+tf.square(u_xx[0])+tf.square(u_xx[1]))
         # and optionally add BC on force:
-        loss_BC += tf.reduce_mean(tf.square(F[0])+tf.square(F_x[0]-np.pi))
+        #loss_BC += tf.reduce_mean(tf.square(F[0])+tf.square(F_x[0]-np.pi))
         
         del tape
         del tape2
@@ -150,6 +150,10 @@ class PINNSolver():
         loss_data = tf.reduce_mean(tf.square(u_pred - anal))
         #loss_data = 0 # to exclude data
 
+        return loss_PDE, loss_BC, loss_data 
+    
+    def loss_fn(self, X):
+        loss_PDE, loss_BC, loss_data = self.loss_fn_all(X)
         return loss_fac[0]*loss_PDE + loss_fac[1]*loss_BC + loss_fac[2]*loss_data
     
     def get_grad(self, X):
@@ -178,14 +182,16 @@ class PINNSolver():
         for i in range(N):
             
             loss = train_step()
-            
+            if i % 100 == 0:
+                self.loss_PDE, self.loss_BC, self.loss_data = self.loss_fn_all(X)
             self.current_loss = loss.numpy()
             self.current_weights = self.model.get_weights()
             self.callback()
             
     def callback(self, xr=None):
         if self.iter % 100 == 0:
-            print('It {:05d}: loss = {:10.8e}'.format(self.iter,self.current_loss))
+            
+            print('It {:05d}: loss = {:10.8e}, loss_PDE = {:10.8e}'.format(self.iter,self.current_loss, self.loss_PDE))
         self.hist.append(self.current_loss)
         self.weights.append(self.current_weights)
         self.iter+=1
@@ -218,7 +224,7 @@ class PINNSolver():
         
         ax2 = fig.add_subplot(gs[1, 1])
         ax2.plot(xspace, prediction[:,1],color = 'b', linestyle='dashed', label='PINN')
-        ax2.plot(xspace,force(xspace,1),color='r',label='analytic')
+        ax2.plot(xspace,force(xspace, 1),color='r',label='analytic')
         ax2.legend()
         ax2.set_title('force')
         
@@ -235,10 +241,11 @@ solver = PINNSolver(model, X_c, X_d)
 # Start timer
 t0 = time()
 
-#lr = tf.keras.optimizers.schedules.PiecewiseConstantDecay([950,970],[1e-2,1e-3,5e-4])
-optim = tf.keras.optimizers.Adam(learning_rate=6e-3)
+lr = tf.keras.optimizers.schedules.PiecewiseConstantDecay([5000,10000, 20000],
+                                                          [1e-3,1e-4,1e-5, 1e-6])
+optim = tf.keras.optimizers.Adam(learning_rate=lr)
 #optim = tf.keras.optimizers.Adam()
-solver.solve_with_TFoptimizer(optim, X_b, N=2000)
+solver.solve_with_TFoptimizer(optim, X_b, N=50000)
 
 
 # Print computation time
